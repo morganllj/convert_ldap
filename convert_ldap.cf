@@ -1,0 +1,163 @@
+# rhs may be a regex in all (most?) cases.  Specials much be escaped (\\s*).
+# lhs (left hand side) is case insensitive, rhs (right hand side) case will be preserved.
+
+###### Universal changes (applied to all entries independent of objectclass)
+$convert_base64 = 1;  # set to '1' to convert attrs in base64 to text before processing.  
+		# Requires openssl (uses openssl base65 -d)
+		# if you don't have openssl you will get many many errors as the code doesn't check for it.
+
+###
+# Change dn: can be any part of the dn
+# lhs: old base
+# rhs: new base
+# should be called "dn_change."
+# %base_change = ( "dc=oldbase,dc=oldtld" => "dc=newbase,dc=newtld",
+# 		    "cn=oldgroup,ou=Groups," => "cn=newgroup,ou=groups,"
+# 		);
+%base_change = ();
+
+###
+# These bases and anything below in the directory will be ignored. 
+#
+# get a (rudimentary) list of bases: 
+# cat students.ldif | perl -p -000 -e 's/\n\s//g;$_.="\n\n"'|grep dn:| perl -p -e 's/\s*,\s*/,/g;($s) = (split /,/)[0]; s/$s,//'|sort -u
+#
+# This is after any conversion above so if you ignore ou=people,o=base but  convert o=domain.com,ou=people,o=base 
+#     to ou=employees,o=base it will not be excluded but uid=something,ou=people,o=base will be ignored.
+# This is after any conversion above so 
+#     if you "ignore" ou=people,o=base but  
+#     convert o=domain,ou=people,o=base ou=employees,o=base 
+#     the new ou=employees,o=base will be included.
+# @bases_to_ignore = ( "o=legacybase", 
+# 		     "ou=people,dc=regularbase,dc=org",
+#    	           );
+@bases_to_ignore = ();
+
+###
+# Objectclasses of entries you wish to include.
+# omit entire entries by objectclass by omitting them here.
+#
+# after dumping the entire directory with db2ldif or dsconf export, get a list of objectclasses:
+# grep -i objectclass: base.ldif |awk '{print $2}'|sort -u
+#
+# If the objectclass is in @required_objectclasses the entry will be included.
+# If an objectclass here is not also in @desired_objectclasses then the 
+#    objectclass itself will be stripped but the entry will be included.
+#
+# this is before changing the objectclass name via above objectclass_name_change
+
+@desired_objectclasses =
+  qw/top domain organizationalUnit groupOfNames groupOfURLs groupofUniqueNames person organizationalPerson 
+     inetOrgPerson posixaccount posixGroup shadowaccount nisNetGroup/,
+
+##
+# List of objectclasses you want included in an entry.
+# Remove unwanted objectclasses by omitting them here.
+# this is bfe changing the objectclass name via %objectclass_name_change above
+@required_objectclasses = 
+  qw/domain groupOfNames organizationalUnit groupOfUniqueNames nisNetGroup/;
+
+##
+# explicitly skip entries containing these objectclasses
+@skip_objectclasses = qw/nismap SolarisNamingProfile/;
+
+##
+# change lhs attribute name to rhs.
+# an empty rhs ("") will result in attribute removal
+# %attr_change = ( 
+# 		   "oldattr" => "newattr",
+# 		   "oldattr_to_remove" => "",
+# 		);
+%attr_change = ();
+
+# run the rhs subroutine on value of lhs attribute
+# %modify_value = (
+#     "cn" => \&some_sub
+# 		  );
+%modify_value = ();
+
+### per-objectclass changes: changes by objectclass.  This is *after* any changes above
+# %changes = (
+#     "objectclass_name" => {
+#         ### change attribute name(s).
+#      	# an emptly rhs ("") will remove the attribute.
+# 	"attr_change" => {
+# 	    "oldvalue" => "newvalue",
+# 	    "oldvalue_to_delete" => "",
+#          },
+				     
+#          ### Set values for attributes.  This will not work for multi-value.
+#  	# It only adds if the attribute does not exist already.
+# 	"attr_set_value" => {
+# 	    "attr_name" => "static_value"
+#         },
+
+#         ### Change the name of one or more objectclasses.
+#      	# This conversion is done before @objectclasses and @required_objectclasses are evaluated.
+# 	"objectclass_name_change" => { "old_objectclass_name" => "new_objectclass_name" },
+
+#  	### Add rhs objectclass to any entry with parent objectclass
+# 	"add_objectclasses" => [ qw/additional_objectclass other_additional_objectclass/ ],
+
+# 	### name of the attribute you'd like to use for the rdn.
+# 	"change_rdn" => "uid"
+
+# 	### merge values from a csv file
+#         # the file must be in the same directory as this script with the name of the hash key and a .csv extension
+# 	"merge_from_csv" => {
+#             # merge csv columns into ldap attributes.  These will supercede what is already in ldap
+#             "csv_file_name" => {
+#                 # header: skip the first line because it's a header?  yes or no.	
+#                 "header" => "yes",
+
+# 		# import the value of the csv column by position into to the indicated attribute
+#                 # use 'objectclass:something' in place of an attrname to set the objectclass something.
+# 		#     use y/yes and n/no in the csv file to set (or not set) this objectclass.
+#                 #     there can currently only be one objectclass: attr.  TODO.
+#                 # use 'active:yn' to only import the account for 'y/yes' value in the csv
+#                 # skip a csv field with "".
+#                 "cols_to_ldap_attrs" => [qw/uid sn givenname "" active:yn objectclass:customObjectclass/],
+
+# 	        # unique_identifier must be unique: it's used to decide which ldap entry to 
+# 	        #     merge the csv line with.
+#                 "unique_identifier" => "uid",
+
+#                 #minimum number of columns required to merge a record
+# 	        "min_num_cols" => "2",
+
+#                 "objectclass_name_change" => { "old_objectclass" => "new_objectclass" },
+#             },
+#         }    
+#     }
+# );
+
+%changes = ();
+
+
+# this will be added just below the top level entry.  Designed for new structural
+# $add_to_top = <<EOF;
+# dn: ou=add-on_group,dc=base,dc=tld
+# objectClass: top
+# objectClass: organizationalunit
+# ou: add-on_group
+# EOF
+$add_to_top = "";
+
+
+# LDIF that will be put at the bottom of the output
+$free_form_LDIF = "";
+
+
+# for my $oc (sort keys %changes) {
+#     print "oc: $oc\n";
+#     for my $change (sort keys %{$changes{$oc}}){
+# 	print "\tchange: $change\n";
+# 	my @c = %{$changes{$oc}{$change}};
+# 	for (@c) {
+# 	    print "\t\t$_\n";
+# 	}
+#     }
+# }
+      
+1;
+

@@ -41,6 +41,7 @@ sub remove_commas(@);
 sub remove_leading_trailing_space(@);
 sub modify_cn(@);
 sub get_ntuserdomainid(@);
+sub merge_csv_changes(@);
 
 my %opts;
 getopts('dc:s', \%opts);
@@ -72,90 +73,7 @@ our $convert_base64;
 # remove spaces before/after commas to make comparisons reliable
 for (@bases_to_ignore) { s/\s*,\s*/,/g; }
 
-for my $objectclass (sort keys %changes) {
-    # walk through the changes to merge in from csv files and save them in the %changes hash for use later
-    if (exists $changes{$objectclass}{merge_from_csv}) {
-	for my $merge_file (keys %{$changes{$objectclass}{merge_from_csv}}) {
-	    print STDERR "\nworking on merge file $merge_file..\n"
-	      if (exists $opts{d});
-
-	    # open file based on hash key under $changes->{merge_from_csv}
-	    #print "opening csv merge file ", $working_dir, $merge_file, ".csv", "\n";
-	    open (IN, $working_dir . $merge_file . ".csv") || die "can't open merge_from_csv file $merge_file..";
-
-	    # skip the header if so configured
-	    <IN> if ($changes{$objectclass}{merge_from_csv}{$merge_file}{header} eq "yes"); 
-
-	    # find the index of the unique id so it can be used as a hash key
-	    my $unique_id_index=0;
-	    for (@{$changes{$objectclass}{merge_from_csv}{$merge_file}{cols_to_ldap_attrs}}) {
-		last if (lc $changes{$objectclass}{merge_from_csv}{$merge_file}{unique_identifier} eq lc $_);
-		$unique_id_index++;
-	    }
-
-	    while (<IN>) {
-		chomp;
-
-		my @csv_line = split /,/;
-
-		# handle fields that count off into infinity in spreadsheet.
-		my $field_count=0;
-		for (@csv_line) {$field_count++ unless /^\s*$/}
-		next if $field_count < $changes{$objectclass}{merge_from_csv}{$merge_file}{min_num_cols};
-
-		print STDERR "\ncsv line: /", join '-', @csv_line, "/\n"
-		  if (exists $opts{d});
-
-		my $skip_entry=0;
-		my $i = 0;
-
-		for ($i=0; $i<=$#csv_line+1; $i++) {
-		    # skip if either is empty.  TODO: do we ever want to clear an attribute here?
-		    next unless (defined $changes{$objectclass}{merge_from_csv}{$merge_file}{cols_to_ldap_attrs}[$i]);
-		    next if (!defined ($csv_line[$i]) || $csv_line[$i] =~ /^\s*$/);
-
-		    # qw// has no way to enter an empty field so we use "".
-		    next if ($changes{$objectclass}{merge_from_csv}{$merge_file}{cols_to_ldap_attrs}[$i] eq '""');
-		    next if ($skip_entry);
-
-		    if ( $changes{$objectclass}{merge_from_csv}{$merge_file}{cols_to_ldap_attrs}[$i] 
-			 =~ /^\s*objectclass:(.*)$/i) {
-			my $value = $1;
-			if ($csv_line[$i] =~ /^\s*y/i) {
-			    print STDERR "assigning objectclass: ", $value, "\n"
-			      if (exists $opts{d});
-			    $changes{$objectclass}{merge_from_csv}{$merge_file}{values}{$csv_line[$unique_id_index]}{objectclass} = $value;
-			}
-			next;
-		    }
-
-		    if ($changes{$objectclass}{merge_from_csv}{$merge_file}{cols_to_ldap_attrs}[$i] 
-			 =~ /^\s*active:(.*)$/i) {
-			if ($csv_line[$i] =~ /^\s*n/i) {
-			    print STDERR "skipping entry, $changes{$objectclass}{merge_from_csv}{$merge_file}{cols_to_ldap_attrs}[$i]: ".
-			      "$csv_line[$i]\n"
-			      if (exists $opts{d});
-
-			    delete $changes{$objectclass}{merge_from_csv}{$merge_file}{values}{$csv_line[$unique_id_index]}
-			      if (exists $changes{$objectclass}{merge_from_csv}{$merge_file}{values}{$csv_line[$unique_id_index]});
-
-			    $skip_entry=1;
-			}
-			next;
-		    }
-
-		    print STDERR "assigning ", $changes{$objectclass}{merge_from_csv}{$merge_file}{cols_to_ldap_attrs}[$i], " to ",
-		      $csv_line[$i],"\n"
-			if (exists $opts{d});
-		      
-		    $changes{$objectclass}{merge_from_csv}{$merge_file}{values}{$csv_line[$unique_id_index]}{
-			$changes{$objectclass}{merge_from_csv}{$merge_file}{cols_to_ldap_attrs}[$i]} = 
-			  $csv_line[$i];
-		}
-	    }
-	}
-    }
-}
+%changes = merge_csv_changes(%changes);
 
 $/="";  # Pull in a full LDAP entry on each pass of the while loop.
 
@@ -199,21 +117,21 @@ while(<>) {
 	    $dns_changed{$hash_dn} = $dn;
 	    $dns_changed{$hash_dn} =~ s/^dn:\s*//;
 
-#	    if (lc $dns_changed{$hash_dn} =~ lc $base_change{$k}) {
-	    	# we've changed the top level entry or rdn and we have to update the rdn to match.
-	    	my $rdn = $dns_changed{$hash_dn};
-	    	$rdn = (split /\,/, $rdn)[0];
-	    	$rdn =~ s/=/: /;
-	    	my $rdn_attr = (split /\s+/, $rdn)[0];
-		if (grep /^$rdn_attr/i, @l) {
-		    for (@l) {
-			s/^$rdn_attr/:/i;
-		    }
-		    push @l, $rdn;
+	    # we've changed the top level entry or rdn and we have to update the rdn to match.
+	    my $rdn = $dns_changed{$hash_dn};
+	    $rdn = (split /\,/, $rdn)[0];
+	    $rdn =~ s/=/: /;
+	    my $rdn_attr = (split /\s+/, $rdn)[0];
+	    if (grep /^$rdn_attr/i, @l) {
+		for (@l) {
+		    s/^$rdn_attr/:/i;
 		}
-#	    }
+		push @l, $rdn;
+	    }
 	}
     }
+
+
 
     my $skip_base = 0;
     for my $b (@bases_to_ignore) { 
@@ -252,6 +170,8 @@ while(<>) {
 
     } @l;
 
+
+
     for my $objectclass (sort keys %changes) {
 	# only make changes if the entry has the intended objectclass
 	next unless (grep /^objectClass:\s*$objectclass/i, @l);
@@ -268,6 +188,8 @@ while(<>) {
 	      
 	} @l;
 
+
+
 	# change attribute values
 	for my $k (keys %{$changes{$objectclass}{attr_set_value}}) {
 #	    push @l, $k. ": ". $changes{$objectclass}{attr_set_value}{$k}
@@ -275,7 +197,7 @@ while(<>) {
 	    unless (grep /^$k:.*/i, @l) {
 		if (my $t = ref $changes{$objectclass}{attr_set_value}{$k}) {
 		    if ($t eq "CODE") {
-			push @l, $changes{$objectclass}{attr_set_value}{$k}->(@l)
+			push @l, $k . ": " . $changes{$objectclass}{attr_set_value}{$k}->(@l)
 		    } else {
 			die "reference of type $t in \$changes{$objectclass}{attr_setup_value}{$k} is not valid!";
 		    }
@@ -284,6 +206,9 @@ while(<>) {
 		}
 	    }
 	}
+
+
+
 
 
 	if (exists $changes{$objectclass}{change_rdn} && $changes{$objectclass}{change_rdn}) {
@@ -503,10 +428,104 @@ sub get_ntuserdomainid(@) {
     }
 
 
-    for (@e) {
-	print STDERR "checking: $_\n";
-    }
-    print STDERR "\n\n";
+    # for (@e) {
+    # 	print STDERR "checking: $_\n";
+    # }
+    # print STDERR "\n\n";
     
     die "uid is not found in the passed entry!";
+}
+
+
+sub merge_csv_changes(@) {
+    my %changes = @_;
+
+    for my $objectclass (sort keys %changes) {
+	# walk through the changes to merge in from csv files and save them in the %changes hash for use later
+	if (exists $changes{$objectclass}{merge_from_csv}) {
+	    for my $merge_file (keys %{$changes{$objectclass}{merge_from_csv}}) {
+		print STDERR "\nworking on merge file $merge_file..\n"
+		  if (exists $opts{d});
+
+		# open file based on hash key under $changes->{merge_from_csv}
+		#print "opening csv merge file ", $working_dir, $merge_file, ".csv", "\n";
+		open (IN, $working_dir . $merge_file . ".csv") || die "can't open merge_from_csv file $merge_file..";
+
+		# skip the header if so configured
+		<IN> if ($changes{$objectclass}{merge_from_csv}{$merge_file}{header} eq "yes"); 
+
+		# find the index of the unique id so it can be used as a hash key
+		my $unique_id_index=0;
+		for (@{$changes{$objectclass}{merge_from_csv}{$merge_file}{cols_to_ldap_attrs}}) {
+		    last if (lc $changes{$objectclass}{merge_from_csv}{$merge_file}{unique_identifier} eq lc $_);
+		    $unique_id_index++;
+		}
+
+		while (<IN>) {
+		    chomp;
+
+		    my @csv_line = split /,/;
+
+		    # handle fields that count off into infinity in spreadsheet.
+		    my $field_count=0;
+		    for (@csv_line) {
+			$field_count++ unless /^\s*$/;
+		    }
+		    next if $field_count < $changes{$objectclass}{merge_from_csv}{$merge_file}{min_num_cols};
+
+		    print STDERR "\ncsv line: /", join '-', @csv_line, "/\n"
+		      if (exists $opts{d});
+
+		    my $skip_entry=0;
+		    my $i = 0;
+
+		    for ($i=0; $i<=$#csv_line+1; $i++) {
+			# skip if either is empty.  TODO: do we ever want to clear an attribute here?
+			next unless (defined $changes{$objectclass}{merge_from_csv}{$merge_file}{cols_to_ldap_attrs}[$i]);
+			next if (!defined ($csv_line[$i]) || $csv_line[$i] =~ /^\s*$/);
+
+			# qw// has no way to enter an empty field so we use "".
+			next if ($changes{$objectclass}{merge_from_csv}{$merge_file}{cols_to_ldap_attrs}[$i] eq '""');
+			next if ($skip_entry);
+
+			if ( $changes{$objectclass}{merge_from_csv}{$merge_file}{cols_to_ldap_attrs}[$i] 
+			     =~ /^\s*objectclass:(.*)$/i) {
+			    my $value = $1;
+			    if ($csv_line[$i] =~ /^\s*y/i) {
+				print STDERR "assigning objectclass: ", $value, "\n"
+				  if (exists $opts{d});
+				$changes{$objectclass}{merge_from_csv}{$merge_file}{values}{$csv_line[$unique_id_index]}{objectclass} = $value;
+			    }
+			    next;
+			}
+
+			if ($changes{$objectclass}{merge_from_csv}{$merge_file}{cols_to_ldap_attrs}[$i] 
+			    =~ /^\s*active:(.*)$/i) {
+			    if ($csv_line[$i] =~ /^\s*n/i) {
+				print STDERR "skipping entry, $changes{$objectclass}{merge_from_csv}{$merge_file}{cols_to_ldap_attrs}[$i]: ".
+				  "$csv_line[$i]\n"
+				    if (exists $opts{d});
+
+				delete $changes{$objectclass}{merge_from_csv}{$merge_file}{values}{$csv_line[$unique_id_index]}
+				  if (exists $changes{$objectclass}{merge_from_csv}{$merge_file}{values}{$csv_line[$unique_id_index]});
+
+				$skip_entry=1;
+			    }
+			    next;
+			}
+
+			print STDERR "assigning ", $changes{$objectclass}{merge_from_csv}{$merge_file}{cols_to_ldap_attrs}[$i], " to ",
+			  $csv_line[$i],"\n"
+			    if (exists $opts{d});
+		      
+			$changes{$objectclass}{merge_from_csv}{$merge_file}{values}{$csv_line[$unique_id_index]}{
+			    $changes{$objectclass}{merge_from_csv}{$merge_file}{cols_to_ldap_attrs}[$i]} = 
+			      $csv_line[$i];
+		    }
+		}
+	    }
+	}
+    }    
+
+    return %changes;
 }

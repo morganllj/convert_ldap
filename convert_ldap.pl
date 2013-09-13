@@ -28,7 +28,7 @@
 # Import the new data:
 #     /usr/lib64/dirsrv/slapd-<instance>/ldif2db -s <base> -i /var/tmp/<base>.ldif
 # It is normal to get a ton of errors the first few times.  If so, modify 
-#     convert_ldap.pl or base.ldif and repeat above.
+#     convert_ldap.cf or base.ldif and repeat above.
 # 
 use strict;
 use Getopt::Std;

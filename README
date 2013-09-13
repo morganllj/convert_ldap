@@ -1,0 +1,36 @@
+
+convert_ldap.pl
+Morgan Jones (morgan@morganjones.org)
+
+General purpose script to convert ldif from one ldap schema to
+another.  It can be used stand-alone to migrate an entire ldap
+environment or a few users.  It is also used in selective_ldap_sync
+(separate repository) to convert users as they are synchronized
+between ldap environments.
+
+Usage:
+Dump the contents of the newly configured directory (Centos/Redhat/389 DS in this case):
+    /usr/lib64/dirsrv/slapd-<instance>/db2ldif -s <base> -a /var/tmp/base.ldif
+    or ODSEE: dsconf export --no-repl -h localhost -p port <base> /var/tmp/base.ldif
+Transform the output of the old directory with this script:
+    cat <old_base>_110511.20.49.38.ldif |./convert_ldap.pl > converted.ldif
+Concatenate the converted old directory to the dump of the new directory.  This
+    does assume that your containers were removed by convert_ldap.pl.
+    cat /var/tmp/base.ldif converted.ldif > /var/tmp/o_msues.ldif
+Stop slapd:
+    /usr/lib64/dirsrv/slapd-<instance>/stop-slapd
+Import the new data:
+    /usr/lib64/dirsrv/slapd-<instance>/ldif2db -s <base> -i /var/tmp/<base>.ldif
+It is normal to get a ton of errors the first few times.  If so, modify 
+    convert_ldap.cf or base.ldif and repeat above.
+
+See convert_ldap.cf for in-depth configuration options.
+
+Features include:
+- most changes can be done globally or per objectclass
+- omitting bases or objects
+- change from one basedn or object to another
+- change attribute names
+- arbitrary ldap value transform (via subroutine)
+- change the rdn
+- import values from a csv

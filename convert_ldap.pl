@@ -109,7 +109,17 @@ while(<>) {
     $dn =~ s/\s*,\s*/,/g;
 
     for my $k (keys %base_change) {
-        $dn =~ s/$k/$base_change{$k}/i;
+#        $dn =~ s/$k/$base_change{$k}/i;
+        
+	my $t = ref $base_change{$k};
+
+	my $ou;
+	if ($t eq "CODE") {
+	    $ou = $base_change{$k}->(@l);
+	} else {
+	    $ou = $base_change{$k};
+	}
+	$dn =~ s/$k/$ou/i;
 
 	if ($dn ne $orig_dn) {
 	    my $hash_dn = lc $orig_dn;
@@ -178,7 +188,18 @@ while(<>) {
 	
 	map {
 	    for my $oc (keys %{$changes{$objectclass}{objectclass_name_change}}) {
-	    	s/(objectclass:)\s*$oc/$1 $changes{$objectclass}{objectclass_name_change}{$oc}/i;
+
+		my $t = ref $changes{$objectclass}{objectclass_name_change}{$oc};
+
+		my $new_oc;
+		if ($t eq "CODE") {
+#		    push @l, $k . ": " . $changes{$objectclass}{objectclass_name_change}{$k}->(@l);
+		    $new_oc = $changes{$objectclass}{objectclass_name_change}{$oc}->(@l);
+		} else {
+		    $new_oc = $changes{$objectclass}{objectclass_name_change}{$oc};
+		}
+#		s/(objectclass:)\s*$oc/$1 $changes{$objectclass}{objectclass_name_change}{$oc}/i;
+		s/(objectclass:)\s*$oc/$1 $new_oc/i;
 	    }
 
 	    # change attributes.  It's normal for attributes to end up /^:/--see note above.

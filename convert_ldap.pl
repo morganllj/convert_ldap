@@ -168,9 +168,17 @@ while(<>) {
 	    s/^objectclass:/:/i 
 	}
 
+
+
     	# change attribute values
     	for my $k (keys %attr_change) {
-    	    s/$k:/$attr_change{$k}:/i;
+	    if ($attr_change{$k} =~ '%%remove_if_empty%%') {
+		$_ = ":"
+		  if ($_ =~ /:\s*$/);
+	    } else {
+		s/$k:/$attr_change{$k}:/i;
+	    }
+
     	}
 
 	for my $attr (keys %modify_value) {

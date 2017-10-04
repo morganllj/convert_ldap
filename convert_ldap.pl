@@ -109,8 +109,6 @@ while(<>) {
     $dn =~ s/\s*,\s*/,/g;
 
     for my $k (keys %base_change) {
-#        $dn =~ s/$k/$base_change{$k}/i;
-        
 	my $t = ref $base_change{$k};
 
 	my $ou;
@@ -168,8 +166,6 @@ while(<>) {
 	    s/^objectclass:/:/i 
 	}
 
-
-
     	# change attribute values
     	for my $k (keys %attr_change) {
 	    if ($attr_change{$k} =~ '%%remove_if_empty%%') {
@@ -178,7 +174,6 @@ while(<>) {
 	    } else {
 		s/$k:/$attr_change{$k}:/i;
 	    }
-
     	}
 
 	for my $attr (keys %modify_value) {
@@ -201,12 +196,10 @@ while(<>) {
 
 		my $new_oc;
 		if ($t eq "CODE") {
-#		    push @l, $k . ": " . $changes{$objectclass}{objectclass_name_change}{$k}->(@l);
 		    $new_oc = $changes{$objectclass}{objectclass_name_change}{$oc}->(@l);
 		} else {
 		    $new_oc = $changes{$objectclass}{objectclass_name_change}{$oc};
 		}
-#		s/(objectclass:)\s*$oc/$1 $changes{$objectclass}{objectclass_name_change}{$oc}/i;
 		s/(objectclass:)\s*$oc/$1 $new_oc/i;
 	    }
 
@@ -217,12 +210,8 @@ while(<>) {
 	      
 	} @l;
 
-
-
 	# change attribute values
 	for my $k (keys %{$changes{$objectclass}{attr_set_value}}) {
-#	    push @l, $k. ": ". $changes{$objectclass}{attr_set_value}{$k}
-#	      unless (grep /^$k:.*/i, @l);
 	    unless (grep /^$k:.*/i, @l) {
 		if (my $t = ref $changes{$objectclass}{attr_set_value}{$k}) {
 		    if ($t eq "CODE") {
@@ -235,10 +224,6 @@ while(<>) {
 		}
 	    }
 	}
-
-
-
-
 
 	if (exists $changes{$objectclass}{change_rdn} && $changes{$objectclass}{change_rdn}) {
 	    my ($change_to) = grep /$changes{$objectclass}{change_rdn}\s*:.*/i, @l;
@@ -312,29 +297,7 @@ while(<>) {
 	    }
 	}
     }
-    # TODO: hack, add general config later
-    # add objectclass/attr based on ou?
-    # push @l, "objectclass: icorgguest"
-    #   if ($dn =~ /\,\s*ou=guests\,\s*/i);
-    # $dn =~ s/cn=#/cn=/;
 
-    # # save entries containing DNs for later conversion and printing.
-    # if (grep (/^uniqueMember:/i, @l) || grep (/^memberUid:/i, @l) ||
-    # 	grep (/^modifiersName:/i, @l) || grep (/^creatorsName:/i, @l) ||
-    # 	grep (/^member:/i, @l)) {
-    # 	push @member_entries, [ lc $dn, @l ];
-	
-    # 	next;
-    # }
-
-    # remove any attributes whose name was left null.
-    # my @pl;
-    # for (@l) {
-    #     push @pl, $_ unless /^:/;
-    # }
-
-#    print "$dn\n", join "\n", @pl, "\n";
-#    push @entries, "$dn\n" . join ("\n", @pl) . "\n";
     push @entries, [ lc $dn, @l ];
 
     if (((!$add_to_top_printed) && ($add_to_top !~ /^\s*$/)) && !$opts{s}) {
@@ -365,7 +328,6 @@ for (@entries) {
 	    $entry = $_;
 	}
 
-#	print "$_\n" unless /^:/;
 	print "$entry\n" unless (!defined $entry || $entry =~ /^:/);
     }
     print "\n";
@@ -412,7 +374,6 @@ sub attr_contains_desired_objectclass($) {
 
 ######
 sub print_usage() {
-#    print "usage: $0 -c <config file> [-i <input file>]\n";
     print "usage: cat orig.ldif | $0 [-s] -c <config file> > new.ldif\n";
     print "\t-c <config file> configuration file\n";
     print "\t-s read input from stdin.  Doesn't add top or bottom entries.\n";
@@ -450,18 +411,11 @@ sub get_ntuserdomainid(@) {
 
     for (@e) {
 	if (/uid:\s*(.*)/) {
-#	    print STDERR "set ntuserdomainid: /$1/\n";
 	    return "ntuserdomainid: $1";
 
 	}
     }
 
-
-    # for (@e) {
-    # 	print STDERR "checking: $_\n";
-    # }
-    # print STDERR "\n\n";
-    
     die "uid is not found in the passed entry!";
 }
 
@@ -477,7 +431,6 @@ sub merge_csv_changes(@) {
 		  if (exists $opts{d});
 
 		# open file based on hash key under $changes->{merge_from_csv}
-		#print "opening csv merge file ", $working_dir, $merge_file, ".csv", "\n";
 		open (IN, $working_dir . $merge_file . ".csv") || die "can't open merge_from_csv file $merge_file..";
 
 		# skip the header if so configured

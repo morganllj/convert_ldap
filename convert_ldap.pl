@@ -318,11 +318,13 @@ for (@entries) {
 	    my $dn_from_member = lc $2;
 	    $dn_from_member =~ s/\s*,\s*/,/g;
 
-	    $new_member = $dns_changed{$dn_from_member}
-	      if (exists $dns_changed{$dn_from_member});
+	    if (exists $dns_changed{$dn_from_member}) {
+		$new_member = $dns_changed{$dn_from_member}
+	    }
+	}
 
+	if (defined $new_member) {
 	    $entry = $attr . ": " . $new_member
-	      if (defined $new_member);
 	} else {
 	    $entry = $_;
 	}
